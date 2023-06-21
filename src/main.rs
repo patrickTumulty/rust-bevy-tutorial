@@ -5,19 +5,23 @@ use rand::prelude::*;
 
 pub const NUMBER_OF_ENEMIES: usize = 4;
 pub const PLAYER_SPEED: f32 = 500.0;
+pub const ENEMY_SPEED: f32 = 200.0;
 pub const PLAYER_SIZE: f32 = 64.0;
+pub const ENEMY_SIZE: f32 = 64.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_startup_system(spawn_player)
+        .add_startup_system(spawn_player) 
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_enemies)
         .add_system(player_movement)
         .add_system(confine_player_movement)
+        .add_system(enemy_movement)
+        .add_system(update_enemy_direction)
+        .add_system(confine_enemy_movement)
         .run()
 }
-
 
 pub fn spawn_camera(mut commands: Commands, 
                     window_query: Query<&Window, With<PrimaryWindow>>) 
@@ -34,7 +38,9 @@ pub fn spawn_camera(mut commands: Commands,
 pub struct Player {}
 
 #[derive(Component)]
-pub struct Enemy {}
+pub struct Enemy {
+    pub direction: Vec2,
+}
 
 pub fn spawn_player(mut commands: Commands, 
                     window_query: Query<&Window, With<PrimaryWindow>>, 
@@ -68,11 +74,11 @@ pub fn spawn_enemies(mut commands: Commands,
                 texture: asset_server.load("sprites/ball_red_large.png"), 
                 ..default()
             },
-            Enemy {},
+            Enemy { 
+                direction: Vec2::new(random::<f32>(), random::<f32>()).normalize(),
+            },
         ));
-
     }
-
 }
 
 pub fn player_movement(keyboard_input: Res<Input<KeyCode>>, 
@@ -108,6 +114,25 @@ pub fn clamp(val: f32, lower: f32, upper: f32) -> f32 {
     if min > upper { upper } else { min }
 }
 
+pub fn confine_enemy_movement(mut enemy_query: Query<&mut Transform, With<Enemy>>, 
+                              window_query: Query<&Window, With<PrimaryWindow>>) 
+{
+    let window = window_query.get_single().unwrap();
+
+    let half_enemy_size = ENEMY_SIZE / 2.0;
+    let x_min = half_enemy_size;
+    let x_max = window.width() - half_enemy_size;
+    let y_min = half_enemy_size;
+    let y_max = window.height() - half_enemy_size;
+
+    for mut transform in enemy_query.iter_mut() {
+        let mut translation = transform.translation;
+        translation.y = clamp(translation.y, y_min, y_max);
+        translation.x = clamp(translation.x, x_min, x_max);
+        transform.translation = translation;
+    }
+}
+
 pub fn confine_player_movement(mut player_query: Query<&mut Transform, With<Player>>, 
                                window_query: Query<&Window, With<PrimaryWindow>>)
 {
@@ -125,6 +150,37 @@ pub fn confine_player_movement(mut player_query: Query<&mut Transform, With<Play
         translation.x = clamp(translation.x, x_min, x_max);
 
         player_transform.translation = translation;
+    }
+}
+
+pub fn enemy_movement(mut enemy_query: Query<(&mut Transform, &Enemy)>, 
+                      time: Res<Time>) 
+{
+    for (mut transform, enemy) in enemy_query.iter_mut() {
+        let direction = Vec3::new(enemy.direction.x, enemy.direction.y, 0.0);
+        transform.translation += direction * ENEMY_SPEED * time.delta_seconds();
+    }
+}
+
+pub fn update_enemy_direction(mut enemy_query: Query<(&Transform, &mut Enemy)>, 
+                              window_query: Query<&Window, With<PrimaryWindow>>)
+{
+    let window = window_query.get_single().unwrap();
+
+    let half_enemy_size = ENEMY_SIZE / 2.0;
+    let x_min = half_enemy_size;
+    let x_max = window.width() - half_enemy_size;
+    let y_min = half_enemy_size;
+    let y_max = window.height() - half_enemy_size;
+
+    for (transform, mut enemy) in enemy_query.iter_mut() {
+        let translation = transform.translation;
+        if translation.x < x_min || translation.x > x_max {
+            enemy.direction.x *= -1.0;
+        }
+        if translation.y < y_min || translation.y > y_max {
+            enemy.direction.y *= -1.0;
+        }
     }
 }
 
