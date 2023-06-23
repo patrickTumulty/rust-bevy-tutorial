@@ -226,7 +226,6 @@ pub fn enemy_hit_player(mut commands: Commands,
             }
         }
     }
-
 }
 
 
