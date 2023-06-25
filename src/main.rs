@@ -2,6 +2,7 @@
 use bevy::window::PrimaryWindow;
 use bevy::prelude::*;
 use rand::prelude::*;
+use bevy::app::AppExit;
 
 pub const PLAYER_SPEED: f32 = 500.0;
 pub const ENEMY_SPEED: f32 = 200.0;
@@ -19,6 +20,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .init_resource::<Score>()
         .init_resource::<StarSpawnTimer>()
+        .add_event::<GameOver>()
         .add_startup_system(spawn_player) 
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_enemies)
@@ -33,6 +35,8 @@ fn main() {
         .add_system(update_score)
         .add_system(tick_star_spawn_timer)
         .add_system(spawn_stars_over_time)
+        .add_system(exit_game)
+        .add_system(handle_game_over)
         .run()
 }
 
@@ -45,6 +49,10 @@ pub fn spawn_camera(mut commands: Commands,
         transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
         ..default()
     });
+}
+ 
+pub struct GameOver {
+    pub score: u32
 }
 
 #[derive(Component)]
@@ -269,10 +277,12 @@ pub fn update_enemy_direction(mut enemy_query: Query<(&Transform, &mut Enemy)>,
 }
 
 pub fn enemy_hit_player(mut commands: Commands, 
-                        mut player_query: Query<(Entity, &Transform), With<Player>>, 
+                        mut player_query: Query<(Entity, &Transform), With<Player>>,  
+                        mut game_over_event_writer: EventWriter<GameOver>,
                         enemy_query: Query<&Transform, With<Enemy>>, 
                         asset_server: Res<AssetServer>, 
-                        audio: Res<Audio>)
+                        audio: Res<Audio>,
+                        score: Res<Score>)
 {
     if let Ok((player_entity, player_transform)) = player_query.get_single_mut() {
         for enemy_transform in enemy_query.iter() {
@@ -284,7 +294,7 @@ pub fn enemy_hit_player(mut commands: Commands,
                 let sound_effect = asset_server.load("audio/explosionCrunch_000.ogg");
                 audio.play(sound_effect);
                 commands.entity(player_entity).despawn();
-
+                game_over_event_writer.send(GameOver { score: score.value });
             }
         }
     }
@@ -332,3 +342,17 @@ pub fn spawn_stars_over_time(mut commands: Commands,
         spawn_star(&mut commands, window, &asset_server);
     }
 }
+
+pub fn exit_game(keyboard_input: Res<Input<KeyCode>>,
+                 mut app_exit_event_wirter: EventWriter<AppExit>) 
+{ 
+    if keyboard_input.just_pressed(KeyCode::Escape) {  
+        app_exit_event_wirter.send(AppExit);
+    }
+}
+
+pub fn handle_game_over(mut game_over_event_reader: EventReader<GameOver>) { 
+    for event in game_over_event_reader.iter() { 
+        println!("Game Over: Final Score: {}", event.score);
+    }
+} 
